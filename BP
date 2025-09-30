@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/*
+  BabyPanda NFT
+  - Max supply: 1,888
+  - Owner-only minting (batch mint allowed)
+  - ERC-7857 surface (transfer/clone/authorizeUsage) implemented as stubs that
+    check an oracle verify function. Replace with your oracle integration.
+  - Uses OpenZeppelin contracts.
+*/
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+interface IOracle {
+    function verifyProof(bytes calldata proof) external view returns (bool);
+    // optionally other oracle functions you require
+}
+
+contract BabyPanda is ERC721, Ownable, ReentrancyGuard {
+    using Counters for Counters.Counter;
+
+    uint256 public constant MAX_SUPPLY = 1888;
+    Counters.Counter private _tokenIdCounter;
+
+    // Base URI for metadata (encrypted URIs for INFT may be stored off-chain; this is a simple baseUri)
+    string private _baseTokenURI;
+
+    // ERC-7857 specific storage (simplified)
+    mapping(uint256 => bytes32) private _metadataHashes;     // hash of encrypted metadata
+    mapping(uint256 => string) private _encryptedURIs;      // pointer to encrypted metadata (e.g., 0g storage URI)
+    address public oracle;
+
+    event MetadataUpdated(uint256 indexed tokenId, bytes32 newHash);
+    event OracleUpdated(address oldOracle, address newOracle);
+    event UsageAuthorized(uint256 indexed tokenId, address indexed executor);
+
+    modifier validProof(bytes calldata proof) {
+        require(oracle != address(0), "Oracle not set");
+        require(IOracle(oracle).verifyProof(proof), "Invalid oracle proof");
+        _;
+    }
+
+    constructor(string memory name_, string memory symbol_, string memory baseURI_, address oracle_) ERC721(name_, symbol_) {
+        _baseTokenURI = baseURI_;
+        oracle = oracle_;
+        // start token IDs at 1 (optional)
+        _tokenIdCounter.increment();
+    }
+
+    // ========== Metadata / INFT helpers ==========
+    function setOracle(address newOracle) external onlyOwner {
+        address old = oracle;
+        oracle = newOracle;
+        emit OracleUpdated(old, newOracle);
+    }
+
+    function updateEncryptedURI(uint256 tokenId, string calldata encryptedURI, bytes32 metadataHash) external onlyOwner {
+        require(_exists(tokenId), "Nonexistent token");
+        _encryptedURIs[tokenId] = encryptedURI;
+        _metadataHashes[tokenId] = metadataHash;
+        emit MetadataUpdated(tokenId, metadataHash);
+    }
+
+    function encryptedURI(uint256 tokenId) external view returns (string memory) {
+        require(_exists(tokenId), "Nonexistent token");
+        return _encryptedURIs[tokenId];
+    }
+
+    function metadataHash(uint256 tokenId) external view returns (bytes32) {
+        require(_exists(tokenId), "Nonexistent token");
+        return _metadataHashes[tokenId];
+    }
+
+    // ========== Minting ==========
+    /// @notice Owner-only batch mint; mints `count` tokens to `to`. Reverts if exceeding MAX_SUPPLY.
+    function ownerMint(address to, uint256 count) external onlyOwner {
+        require(count > 0, "count 0");
+        uint256 current = totalSupply();
+        require(current + count <= MAX_SUPPLY, "Exceeds max supply");
+
+        for (uint256 i = 0; i < count; i++) {
+            uint256 tid = _tokenIdCounter.current();
+            _tokenIdCounter.increment();
+            _safeMint(to, tid);
+        }
+    }
+
+    /// @notice Convenience: mint remaining supply to owner (useful for one-time genesis mint)
+    function mintRemainingToOwner() external onlyOwner {
+        uint256 remaining = MAX_SUPPLY - totalSupply();
+        require(remaining > 0, "No remaining supply");
+        ownerMint(owner(), remaining);
+    }
+
+    function totalSupply() public view returns (uint256) {
+        // tokenId started at 1; current() is next id, so total = current - 1
+        uint256 cur = _tokenIdCounter.current();
+        if (cur == 0) return 0;
+        return cur - 1;
+    }
+
+    // ========== ERC-7857 surfaces (simplified) ==========
+    /// Transfer that includes sealedKey & proof (oracle verifies). In production,
+    /// the oracle must validate re-encryption and provide sealedKey details off-chain.
+    function transfer(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes calldata sealedKey,
+        bytes calldata proof
+    ) external nonReentrant validProof(proof) {
+        require(ownerOf(tokenId) == from, "Not owner");
+        require(to != address(0), "Invalid recipient");
+
+        // Here the oracle's proof must allow updating metadata access for the new owner.
+        // We store hash(sealedKey) as a simple commitment (replace with proper fields)
+        bytes32 newHash = keccak256(sealedKey);
+        _metadataHashes[tokenId] = newHash;
+
+        // Optionally extract encrypted URI from proof via off-chain oracle and set _encryptedURIs[tokenId]
+        // This sample leaves that to an off-chain oracle + updateEncryptedURI call.
+
+        // Transfer NFT ownership
+        _transfer(from, to, tokenId);
+
+        emit MetadataUpdated(tokenId, newHash);
+    }
+
+    /// Clone token (creates a new token with same metadata). Requires oracle proof verifying clone semantics.
+    function clone(
+        address to,
+        uint256 tokenId,
+        bytes calldata sealedKey,
+        bytes calldata proof
+    ) external nonReentrant validProof(proof) returns (uint256 newTokenId) {
+        require(_exists(tokenId), "Original nonexistent");
+        require(to != address(0), "Invalid recipient");
+
+        uint256 tid = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        _safeMint(to, tid);
+
+        // copy metadata pointers (shallow copy - encrypted data pointer)
+        _metadataHashes[tid] = _metadataHashes[tokenId];
+        _encryptedURIs[tid] = _encryptedURIs[tokenId];
+
+        // store commitment to sealedKey for the clone
+        _metadataHashes[tid] = keccak256(sealedKey);
+
+        emit MetadataUpdated(tid, _metadataHashes[tid]);
+        return tid;
+    }
+
+    /// Authorize usage without revealing encrypted metadata
+    function authorizeUsage(
+        uint256 tokenId,
+        address executor,
+        bytes calldata permissions
+    ) external {
+        require(ownerOf(tokenId) == msg.sender, "Only owner can authorize");
+        require(executor != address(0), "Bad executor");
+        // Implementation detail: store permissioning in a mapping (omitted for brevity)
+        // For now, emit event and caller can implement executor-side enforcement
+        emit UsageAuthorized(tokenId, executor);
+    }
+
+    // ========== Overrides ==========
+    function _baseURI() internal view override returns (string memory) {
+        return _baseTokenURI;
+    }
+
+    // Optional: expose tokenURI public override if you want custom behavior
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_exists(tokenId), "Nonexistent token");
+        // If encryptedURI exists, you may return a pointer or a placeholder indicating encrypted metadata
+        string memory enc = _encryptedURIs[tokenId];
+        if (bytes(enc).length > 0) {
+            // it's common to return an on-chain pointer stating it's encrypted; replace as needed
+            return string(abi.encodePacked("encrypted://", enc));
+        }
+        return super.tokenURI(tokenId);
+    }
+}
