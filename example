@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/*
+ Example NFT contract like BAYC
+ - ERC721 standard
+ - Limited max supply
+ - Public mint function with fixed price
+ - BaseURI for metadata
+*/
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract ExampleBAYC is ERC721Enumerable, Ownable {
+    using Strings for uint256;
+
+    uint256 public constant MAX_SUPPLY = 10000;
+    uint256 public constant MINT_PRICE = 0.08 ether;
+    uint256 public constant MAX_PER_TX = 20;
+
+    string private baseTokenURI;
+    bool public saleActive = false;
+
+    constructor(string memory _baseTokenURI) ERC721("Example Bored Apes", "eBAYC") {
+        baseTokenURI = _baseTokenURI;
+    }
+
+    // Toggle sale on/off
+    function flipSaleState() external onlyOwner {
+        saleActive = !saleActive;
+    }
+
+    // Public mint function
+    function mint(uint256 numberOfTokens) external payable {
+        require(saleActive, "Sale is not active");
+        require(numberOfTokens > 0 && numberOfTokens <= MAX_PER_TX, "Exceeds max per tx");
+        require(totalSupply() + numberOfTokens <= MAX_SUPPLY, "Purchase would exceed max supply");
+        require(MINT_PRICE * numberOfTokens <= msg.value, "Ether value sent is not correct");
+
+        for (uint256 i = 0; i < numberOfTokens; i++) {
+            uint256 mintIndex = totalSupply();
+            if (mintIndex < MAX_SUPPLY) {
+                _safeMint(msg.sender, mintIndex + 1); // token IDs start at 1
+            }
+        }
+    }
+
+    // Withdraw contract balance
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    // Metadata handling
+    function _baseURI() internal view override returns (string memory) {
+        return baseTokenURI;
+    }
+
+    function setBaseURI(string memory _baseTokenURI) external onlyOwner {
+        baseTokenURI = _baseTokenURI;
+    }
+}
