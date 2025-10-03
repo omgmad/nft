@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title SimpleNFTMarketplace
+/// @notice Basic marketplace for listing and buying ERC-721 NFTs
+contract SimpleNFTMarketplace is Ownable {
+struct Listing {
+address seller;
+address nftContract;
+uint256 tokenId;
+uint256 price; // in wei
+}
+
+```
+uint256 public nextListingId;
+mapping(uint256 => Listing) public listings;
+
+event Listed(uint256 indexed listingId, address indexed seller, address nftContract, uint256 tokenId, uint256 price);
+event Bought(uint256 indexed listingId, address indexed buyer);
+
+/// @notice Seller lists their NFT for sale
+function listNFT(address nftContract, uint256 tokenId, uint256 price) external returns (uint256) {
+    IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
+
+    uint256 listingId = nextListingId++;
+    listings[listingId] = Listing(msg.sender, nftContract, tokenId, price);
+
+    emit Listed(listingId, msg.sender, nftContract, tokenId, price);
+    return listingId;
+}
+
+/// @notice Buyer purchases listed NFT
+function buyNFT(uint256 listingId) external payable {
+    Listing memory listing = listings[listingId];
+    require(listing.price > 0, "Not listed");
+    require(msg.value >= listing.price, "Insufficient ETH");
+
+    delete listings[listingId];
+
+    // Transfer NFT to buyer
+    IERC721(listing.nftContract).transferFrom(address(this), msg.sender, listing.tokenId);
+
+    // Transfer ETH to seller
+    payable(listing.seller).transfer(listing.price);
+
+    emit Bought(listingId, msg.sender);
+}
+
+/// @notice Owner can withdraw ETH accidentally sent
+function withdraw() external onlyOwner {
+    payable(owner()).transfer(address(this).balance);
+}
+
+/// @notice Get listing details
+function getListing(uint256 listingId) external view returns (Listing memory) {
+    return listings[listingId];
+}
+```
+
+}
