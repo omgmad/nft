@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title CrossmintNFT
+/// @notice Allows minting via standard ETH or Crossmint credit card integration
+contract CrossmintNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+uint256 public mintPrice;
+
+```
+address public crossmintAddress; // official Crossmint account to authorize mints
+
+event Minted(address indexed to, uint256 indexed tokenId);
+
+constructor(string memory name_, string memory symbol_, uint256 _mintPrice, address _crossmintAddress)
+    ERC721(name_, symbol_) 
+{
+    mintPrice = _mintPrice;
+    crossmintAddress = _crossmintAddress;
+}
+
+/// @notice Standard ETH minting
+function mint(string calldata tokenURI_) external payable returns (uint256) {
+    require(msg.value >= mintPrice, "Insufficient ETH");
+
+    uint256 tokenId = nextTokenId++;
+    _safeMint(msg.sender, tokenId);
+    _setTokenURI(tokenId, tokenURI_);
+    emit Minted(msg.sender, tokenId);
+    return tokenId;
+}
+
+/// @notice Crossmint minting (called by Crossmint)
+function crossmint(address to, string calldata tokenURI_) external returns (uint256) {
+    require(msg.sender == crossmintAddress, "Unauthorized");
+
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+    _setTokenURI(tokenId, tokenURI_);
+    emit Minted(to, tokenId);
+    return tokenId;
+}
+
+/// @notice Owner can update Crossmint address
+function setCrossmintAddress(address newAddress) external onlyOwner {
+    crossmintAddress = newAddress;
+}
+
+/// @notice Owner can update mint price
+function setMintPrice(uint256 newPrice) external onlyOwner {
+    mintPrice = newPrice;
+}
+
+/// @notice Owner can withdraw ETH from contract
+function withdraw() external onlyOwner {
+    payable(owner()).transfer(address(this).balance);
+}
+```
+
+}
