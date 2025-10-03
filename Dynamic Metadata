@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title DynamicMetadataNFT
+/// @notice Example NFT where tokenURI changes based on block timestamp (day/night cycle)
+contract DynamicMetadataNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+
+```
+string public dayURI;
+string public nightURI;
+
+constructor(string memory name_, string memory symbol_, string memory _dayURI, string memory _nightURI) 
+    ERC721(name_, symbol_) 
+{
+    dayURI = _dayURI;
+    nightURI = _nightURI;
+}
+
+function mint(address to) external onlyOwner returns (uint256) {
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+    return tokenId;
+}
+
+/// @dev Override tokenURI to return different metadata based on time of day
+function tokenURI(uint256 tokenId) public view override returns (string memory) {
+    require(_exists(tokenId), "Nonexistent token");
+    // Day = even hours, Night = odd hours (example logic)
+    uint256 hour = (block.timestamp / 3600) % 24;
+    if (hour >= 6 && hour < 18) {
+        return dayURI;
+    } else {
+        return nightURI;
+    }
+}
+
+function setURIs(string calldata _dayURI, string calldata _nightURI) external onlyOwner {
+    dayURI = _dayURI;
+    nightURI = _nightURI;
+}
+```
+
+}
