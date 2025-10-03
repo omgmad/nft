@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+
+/// @title OnChainSVGNFT
+/// @notice NFT where each token’s image is fully stored on-chain as an SVG
+contract OnChainSVGNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+
+```
+event Minted(address indexed to, uint256 indexed tokenId);
+
+constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
+
+/// @notice Mint a token with a dynamic SVG generated on-chain
+function mint(address to, string calldata color) external onlyOwner returns (uint256) {
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+
+    string memory svg = generateSVG(color, tokenId);
+    string memory json = Base64.encode(bytes(string(abi.encodePacked(
+        '{"name": "OnChainNFT #', toString(tokenId),
+        '", "description": "On-chain SVG NFT", "image": "data:image/svg+xml;base64,',
+        Base64.encode(bytes(svg)), '"}'
+    ))));
+
+    _setTokenURI(tokenId, string(abi.encodePacked("data:application/json;base64,", json)));
+    emit Minted(to, tokenId);
+    return tokenId;
+}
+
+/// @dev Simple SVG generator with a colored circle
+function generateSVG(string memory color, uint256 tokenId) internal pure returns (string memory) {
+    return string(abi.encodePacked(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">',
+        '<rect width="400" height="400" fill="', color, '" />',
+        '<circle cx="200" cy="200" r="100" fill="white" />',
+        '<text x="200" y="210" font-size="24" text-anchor="middle" fill="black">#', toString(tokenId), '</text>',
+        '</svg>'
+    ));
+}
+
+/// @dev Helper: uint256 to string
+function toString(uint256 value) internal pure returns (string memory) {
+    if (value == 0) return "0";
+    uint256 temp = value;
+    uint256 digits;
+    while (temp != 0) { digits++; temp /= 10; }
+    bytes memory buffer = new bytes(digits);
+    while (value != 0) {
+        digits -= 1;
+        buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+        value /= 10;
+    }
+    return string(buffer);
+}
+```
+
+}
