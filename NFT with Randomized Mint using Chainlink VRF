@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
+
+/// @title RandomNFT
+/// @notice Mint NFTs with randomized traits using Chainlink VRF
+contract RandomNFT is ERC721URIStorage, VRFConsumerBase, Ownable {
+uint256 public nextTokenId;
+bytes32 internal keyHash;
+uint256 internal fee;
+mapping(bytes32 => address) public requestToSender;
+mapping(uint256 => uint256) public tokenRandomness;
+
+```
+event RequestedRandomness(bytes32 requestId, address requester);
+event Minted(address indexed to, uint256 indexed tokenId, uint256 randomness);
+
+constructor(
+    string memory name_,
+    string memory symbol_,
+    address vrfCoordinator_,
+    address linkToken_,
+    bytes32 keyHash_,
+    uint256 fee_
+) ERC721(name_, symbol_) VRFConsumerBase(vrfCoordinator_, linkToken_) {
+    keyHash = keyHash_;
+    fee = fee_;
+}
+
+/// @notice Request mint with random traits
+function requestMint() external returns (bytes32 requestId) {
+    require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK");
+    requestId = requestRandomness(keyHash, fee);
+    requestToSender[requestId] = msg.sender;
+    emit RequestedRandomness(requestId, msg.sender);
+}
+
+/// @notice Chainlink VRF callback
+function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+    address user = requestToSender[requestId];
+    require(user != address(0), "Invalid request");
+    uint256 tokenId = nextTokenId++;
+    _safeMint(user, tokenId);
+    tokenRandomness[tokenId] = randomness;
+    _setTokenURI(tokenId, generateTokenURI(tokenId, randomness));
+    emit Minted(user, tokenId, randomness);
+}
+
+/// @dev Example: generate a simple tokenURI with randomness (can be expanded)
+function generateTokenURI(uint256 tokenId, uint256 randomness) internal pure returns (string memory) {
+    return string(abi.encodePacked(
+        "data:application/json;base64,",
+        "eyJuYW1lIjogIlJhbmRvbU5GVCAj", toString(tokenId),
+        "\", \"description\": \"Random NFT\", \"attributes\": [{\"trait_type\": \"Random\", \"value\": ", toString(randomness), "}]}"));
+}
+
+function withdrawLINK() external onlyOwner {
+    LINK.transfer(msg.sender, LINK.balanceOf(address(this)));
+}
+
+// Helper: uint256 to string
+function toString(uint256 value) internal pure returns (string memory) {
+    if (value == 0) return "0";
+    uint256 temp = value;
+    uint256 digits;
+    while (temp != 0) { digits++; temp /= 10; }
+    bytes memory buffer = new bytes(digits);
+    while (value != 0) {
+        digits -= 1;
+        buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+        value /= 10;
+    }
+    return string(buffer);
+}
+```
+
+}
