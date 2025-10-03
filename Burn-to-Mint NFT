@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title BurnToMintNFT
+/// @notice Users can burn an existing NFT to mint a new one
+contract BurnToMintNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+mapping(uint256 => bool) public canBurnForMint;
+
+```
+event Minted(address indexed to, uint256 indexed tokenId);
+event BurnedForMint(address indexed user, uint256 burnedTokenId, uint256 newTokenId);
+
+constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
+
+/// @notice Owner mints new NFTs
+function ownerMint(address to, string calldata uri) external onlyOwner returns (uint256) {
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+    _setTokenURI(tokenId, uri);
+    emit Minted(to, tokenId);
+    return tokenId;
+}
+
+/// @notice Users burn eligible NFTs to mint new ones
+function burnForMint(uint256 tokenIdToBurn, string calldata newTokenURI) external returns (uint256) {
+    require(ownerOf(tokenIdToBurn) == msg.sender, "Not owner");
+    require(canBurnForMint[tokenIdToBurn], "Token not burnable");
+
+    // Burn old token
+    _burn(tokenIdToBurn);
+
+    // Mint new token
+    uint256 newTokenId = nextTokenId++;
+    _safeMint(msg.sender, newTokenId);
+    _setTokenURI(newTokenId, newTokenURI);
+
+    emit BurnedForMint(msg.sender, tokenIdToBurn, newTokenId);
+    return newTokenId;
+}
+
+/// @notice Owner can mark tokens as burnable
+function setBurnable(uint256 tokenId, bool status) external onlyOwner {
+    canBurnForMint[tokenId] = status;
+}
+```
+
+}
