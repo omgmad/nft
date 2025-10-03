@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title SoulboundNFT
+/// @notice ERC-721 where tokens are non-transferable once minted (soulbound).
+/// - Minting: only owner (contract admin) can mint to addresses
+/// - Burning: token owner can burn their token (optional removal)
+/// - Approvals and transfers are disabled to enforce soulbound property
+contract SoulboundNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+
+```
+event SoulMinted(address indexed to, uint256 indexed tokenId, string uri);
+event SoulBurned(address indexed owner, uint256 indexed tokenId);
+
+constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {}
+
+/// @notice Owner mints a soulbound token to `to` with metadata `tokenURI_`
+function ownerMint(address to, string calldata tokenURI_) external onlyOwner returns (uint256) {
+    uint256 id = nextTokenId;
+    nextTokenId++;
+    _safeMint(to, id);
+    _setTokenURI(id, tokenURI_);
+    emit SoulMinted(to, id, tokenURI_);
+    return id;
+}
+
+/// @notice Allow token holder to burn their own soulbound token (optional)
+function burn(uint256 tokenId) external {
+    require(_isApprovedOrOwner(msg.sender, tokenId) || ownerOf(tokenId) == msg.sender, "Not owner");
+    _burn(tokenId);
+    emit SoulBurned(msg.sender, tokenId);
+}
+
+// --- Disable transfers and approvals to enforce soulbound behavior ---
+
+/// @dev Prevent approve(...) usage
+function approve(address, uint256) public pure override {
+    revert("Soulbound: approvals disabled");
+}
+
+/// @dev Prevent setApprovalForAll(...) usage
+function setApprovalForAll(address, bool) public pure override {
+    revert("Soulbound: approvals disabled");
+}
+
+/// @dev Prevent getApproved from returning an approved spender (always revert or return zero)
+function getApproved(uint256) public pure override returns (address) {
+    return address(0);
+}
+
+/// @dev Prevent isApprovedForAll (always false)
+function isApprovedForAll(address, address) public pure override returns (bool) {
+    return false;
+}
+
+/// @dev Block transfers except for minting (from == address(0)) and burning (to == address(0))
+function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize) internal virtual override {
+    super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    // allow mint (from==0) and burn (to==0), otherwise block
+    if (from != address(0) && to != address(0)) {
+        revert("Soulbound: transfers disabled");
+    }
+}
+
+// Optional: owner withdraw any ETH accidentally sent
+function withdraw() external onlyOwner {
+    payable(owner()).transfer(address(this).balance);
+}
+
+// Fallback to accept ETH (if you want)
+receive() external payable {}
+fallback() external payable {}
+```
+
+}
