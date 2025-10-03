@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title RarityNFT
+/// @notice NFT with different rarity tiers assigned on mint
+contract RarityNFT is ERC721URIStorage, Ownable {
+uint256 public nextTokenId;
+
+```
+enum Rarity { COMMON, RARE, LEGENDARY }
+mapping(uint256 => Rarity) public tokenRarity;
+
+string public commonURI;
+string public rareURI;
+string public legendaryURI;
+
+event Minted(address indexed to, uint256 indexed tokenId, Rarity rarity);
+
+constructor(string memory name_, string memory symbol_, string memory _commonURI, string memory _rareURI, string memory _legendaryURI)
+    ERC721(name_, symbol_)
+{
+    commonURI = _commonURI;
+    rareURI = _rareURI;
+    legendaryURI = _legendaryURI;
+}
+
+/// @notice Mint NFT with pseudo-random rarity
+function mint(address to) external onlyOwner returns (uint256) {
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+
+    Rarity rarity = determineRarity(tokenId);
+    tokenRarity[tokenId] = rarity;
+
+    if (rarity == Rarity.COMMON) _setTokenURI(tokenId, commonURI);
+    else if (rarity == Rarity.RARE) _setTokenURI(tokenId, rareURI);
+    else _setTokenURI(tokenId, legendaryURI);
+
+    emit Minted(to, tokenId, rarity);
+    return tokenId;
+}
+
+/// @dev Simple pseudo-random rarity assignment
+function determineRarity(uint256 tokenId) internal view returns (Rarity) {
+    uint256 rand = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, tokenId))) % 100;
+    if (rand < 70) return Rarity.COMMON;        // 70%
+    else if (rand < 95) return Rarity.RARE;    // 25%
+    else return Rarity.LEGENDARY;              // 5%
+}
+
+function setURIs(string calldata _commonURI, string calldata _rareURI, string calldata _legendaryURI) external onlyOwner {
+    commonURI = _commonURI;
+    rareURI = _rareURI;
+    legendaryURI = _legendaryURI;
+}
+```
+
+}
