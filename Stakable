@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title StakableNFT
+/// @notice Example ERC-721 where holders can stake NFTs to earn ERC20 rewards
+contract StakableNFT is ERC721, Ownable {
+uint256 public nextTokenId;
+IERC20 public rewardToken;
+
+```
+struct StakeInfo {
+    address owner;
+    uint256 since;
+}
+
+// tokenId => StakeInfo
+mapping(uint256 => StakeInfo) public stakes;
+
+uint256 public rewardRate = 1e18; // 1 rewardToken per second per NFT
+
+event NFTMinted(address indexed to, uint256 indexed tokenId);
+event NFTStaked(address indexed user, uint256 indexed tokenId);
+event NFTUnstaked(address indexed user, uint256 indexed tokenId, uint256 rewards);
+
+constructor(string memory name_, string memory symbol_, address rewardToken_) ERC721(name_, symbol_) {
+    rewardToken = IERC20(rewardToken_);
+}
+
+function mint(address to) external onlyOwner returns (uint256) {
+    uint256 tokenId = nextTokenId++;
+    _safeMint(to, tokenId);
+    emit NFTMinted(to, tokenId);
+    return tokenId;
+}
+
+function stake(uint256 tokenId) external {
+    require(ownerOf(tokenId) == msg.sender, "Not owner");
+    _transfer(msg.sender, address(this), tokenId);
+    stakes[tokenId] = StakeInfo(msg.sender, block.timestamp);
+    emit NFTStaked(msg.sender, tokenId);
+}
+
+function unstake(uint256 tokenId) external {
+    StakeInfo memory stakeInfo = stakes[tokenId];
+    require(stakeInfo.owner == msg.sender, "Not staker");
+
+    uint256 rewards = (block.timestamp - stakeInfo.since) * rewardRate;
+    delete stakes[tokenId];
+
+    _transfer(address(this), msg.sender, tokenId);
+    rewardToken.transfer(msg.sender, rewards);
+
+    emit NFTUnstaked(msg.sender, tokenId, rewards);
+}
+
+/// @notice Owner can update reward rate
+function setRewardRate(uint256 rate) external onlyOwner {
+    rewardRate = rate;
+}
+```
+
+}
